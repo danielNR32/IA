@@ -18,7 +18,7 @@ while True:
         
       
        if i%5==0:  
-           cv.imwrite('Recortes_cara/Daniel/img_'+str(i)+'.png', frame2)
+           cv.imwrite('image/DanielNR/img_'+str(i)+'.png', frame2)
        cv.imshow('rostror', frame2)
     cv.imshow('rostros', frame)
     i = i+1
