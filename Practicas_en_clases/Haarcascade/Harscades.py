@@ -15,10 +15,11 @@ while True:
        #frame3 = frame[x+30:x+w-30, y+30:y+h-30]
        frame2 = cv.resize(frame2, (100, 100), interpolation=cv.INTER_AREA)
        
-        
+        # funcion para guardar imagenes
+       
       
        if i%5==0:  
-           cv.imwrite('image/DanielNR/img_'+str(i)+'.png', frame2)
+           cv.imwrite('image/Jorge_my_love/img_'+str(i)+'.png', frame2)
        cv.imshow('rostror', frame2)
     cv.imshow('rostros', frame)
     i = i+1
