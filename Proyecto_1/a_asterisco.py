@@ -1,10 +1,18 @@
 import pygame
-from queue import PriorityQueue
-import time
+import numpy as np
+import heapq
 
-# Configuraciones iniciales
+# 1. Dimensiones predeterminadas
+FILAS = 11
+COLUMNAS = 11
+
+# 2. Ajustar tamaño de ventana
 ANCHO_VENTANA = 600
-VENTANA = pygame.display.set_mode((ANCHO_VENTANA, ANCHO_VENTANA))
+ALTO_VENTANA = 600
+ANCHO_NODO = ANCHO_VENTANA // COLUMNAS
+ALTO_NODO = ALTO_VENTANA // FILAS
+
+VENTANA = pygame.display.set_mode((ANCHO_VENTANA, ALTO_VENTANA))  # Elimina el "+ 50"
 pygame.display.set_caption("Visualización de Nodos")
 
 # Colores (RGB)
@@ -17,28 +25,28 @@ NARANJA = (255, 165, 0)
 PURPURA = (128, 0, 128)
 AZUL = (0, 0, 255)
 
-pygame.font.init() 
-FUENTE = pygame.font.SysFont("Arial", 10,)  
+initial_position = {
+    "x": None,
+    "y": None,
+}
 
-
-
-
+final_position = {
+    "x": None,
+    "y": None,
+}
 
 class Nodo:
-    def __init__(self, fila, col, ancho, total_filas):
+    def __init__(self, fila, col, ancho_nodo, alto_nodo, total_filas, total_columnas):
         self.fila = fila
         self.col = col
-        self.x = fila * ancho
-        self.y = col * ancho
+        self.x = col * ancho_nodo  # X se basa en la columna
+        self.y = fila * alto_nodo  # Y se basa en la fila
         self.color = BLANCO
-        self.ancho = ancho
+        self.ancho = ancho_nodo
+        self.alto = alto_nodo
         self.total_filas = total_filas
-        self.g = float("inf")  
-        self.h = 0 
-        self.f = float("inf")
-        self.father = None  
+        self.total_columnas = total_columnas
 
-    #Obtener la fila y columna del nodo actual
     def get_pos(self):
         return self.fila, self.col
 
@@ -50,7 +58,7 @@ class Nodo:
 
     def es_fin(self):
         return self.color == PURPURA
-    
+
     def restablecer(self):
         self.color = BLANCO
 
@@ -62,186 +70,225 @@ class Nodo:
 
     def hacer_fin(self):
         self.color = PURPURA
-
-    def buscar(self):
-        self.color = AZUL
-
-    def ruta_final(self):
-        self.color = ROJO
-
+        
+    def do_route(self):
+        self.color = ROJO  # Camino en rojo
 
     def dibujar(self, ventana):
-        pygame.draw.rect(ventana, self.color, (self.x, self.y, self.ancho, self.ancho))
+        pygame.draw.rect(ventana, self.color, (self.x, self.y, self.ancho, self.alto))
 
-def crear_grid(filas, ancho):
-    grid = []
-    ancho_nodo = ancho // filas
-    for i in range(filas):
-        grid.append([])
-        for j in range(filas):
-            nodo = Nodo(i, j, ancho_nodo, filas)
-            grid[i].append(nodo)
-    return grid
+def precios(matriz, inicio, meta):
+    filas, columnas = len(matriz), len(matriz[0])
+    
+    movimientos = [
+        (-1, 0, 10), (-1, 1, 14), (0, 1, 10), 
+        (1, 1, 14), (1, 0, 10), (1, -1, 14), 
+        (0, -1, 10), (-1, -1, 14)
+    ]
+    
+    def heuristica(a, b):
+        dx = abs(a[0] - b[0])
+        dy = abs(a[1] - b[1])
+        return 15 * min(dx, dy) + 10 * abs(dx - dy)
+    
+    lista_abierta = [(0, inicio)]
+    de_donde_viene = {}
+    
+    puntaje_g = {pos: float('inf') for fila in range(filas) for pos in [(fila, col) for col in range(columnas)]}
+    puntaje_f = {k: v for k, v in puntaje_g.items()}
+    
+    puntaje_g[inicio] = 0
+    puntaje_f[inicio] = heuristica(inicio, meta)
+    
+    conjunto_cerrado = set()
+    
+    while lista_abierta:
+        current_f, actual = heapq.heappop(lista_abierta)
+        
+        yield ('current', actual, lista_abierta.copy(), conjunto_cerrado.copy())
+        
+        if actual == meta:
+            camino = []
+            while actual in de_donde_viene:
+                camino.append(actual)
+                actual = de_donde_viene[actual]
+            camino.append(inicio)
+            camino = camino[::-1]
+            yield ('path', camino)
+            return
+        
+        conjunto_cerrado.add(actual)
+        
+        for dx, dy, costo in movimientos:
+            vecino = (actual[0] + dx, actual[1] + dy)
+            
+            if 0 <= vecino[0] < filas and 0 <= vecino[1] < columnas:
+                if matriz[vecino[0]][vecino[1]] in {'C', 'I', 'F'} and vecino not in conjunto_cerrado:
+                    puntaje_g_tentativo = puntaje_g[actual] + costo
+                    
+                    if puntaje_g_tentativo < puntaje_g[vecino]:
+                        de_donde_viene[vecino] = actual
+                        puntaje_g[vecino] = puntaje_g_tentativo
+                        puntaje_f[vecino] = puntaje_g_tentativo + heuristica(vecino, meta)
+                        heapq.heappush(lista_abierta, (puntaje_f[vecino], vecino))
+        
+        yield ('updated', actual, lista_abierta.copy(), conjunto_cerrado.copy())
+    
+    yield ('no_path', None)
 
-def dibujar_grid(ventana, filas, ancho):
-    ancho_nodo = ancho // filas
-    for i in range(filas):
-        pygame.draw.line(ventana, GRIS, (0, i * ancho_nodo), (ancho, i * ancho_nodo))
-        for j in range(filas):
-            pygame.draw.line(ventana, GRIS, (j * ancho_nodo, 0), (j * ancho_nodo, ancho))
+def crear_ventana(filas, columnas, ancho_ventana, alto_ventana):
+    ancho_nodo = ancho_ventana // columnas
+    alto_nodo = alto_ventana // filas
+    return [[Nodo(i, j, ancho_nodo, alto_nodo, filas, columnas) for j in range(columnas)] for i in range(filas)]
 
-def dibujar(ventana, grid, filas, ancho):
+def dibujar_ventana(ventana, filas, columnas, ancho_ventana, alto_ventana):
+    ancho_nodo = ancho_ventana // columnas
+    alto_nodo = alto_ventana // filas
+    # Dibujar líneas verticales
+    for col in range(columnas + 1):
+        x = col * ancho_nodo
+        pygame.draw.line(ventana, GRIS, (x, 0), (x, alto_ventana))
+    # Dibujar líneas horizontales
+    for fila in range(filas + 1):
+        y = fila * alto_nodo
+        pygame.draw.line(ventana, GRIS, (0, y), (ancho_ventana, y))
+
+def dibujar(ventana, grid, filas, columnas, ancho_ventana, alto_ventana):
     ventana.fill(BLANCO)
     for fila in grid:
         for nodo in fila:
             nodo.dibujar(ventana)
-
-    dibujar_grid(ventana, filas, ancho)
+    dibujar_ventana(ventana, filas, columnas, ancho_ventana, alto_ventana)
     pygame.display.update()
 
-def obtener_click_pos(pos, filas, ancho):
-    ancho_nodo = ancho // filas
-    y, x = pos
-    fila = y // ancho_nodo
+def obtener_click_pos(pos, filas, columnas, ancho_ventana, alto_ventana):
+    ancho_nodo = ancho_ventana // columnas
+    alto_nodo = alto_ventana // filas
+    x, y = pos
     col = x // ancho_nodo
+    fila = y // alto_nodo
     return fila, col
 
+def get_grid_formated(grid):
+    color_map = {
+        BLANCO: 'C',
+        NEGRO: 'P',
+        NARANJA: 'I',
+        PURPURA: 'F'
+    }
+    current_grid = [
+        [color_map.get(nodo.color, '?') for nodo in fila] 
+        for fila in grid
+    ]
+    return current_grid
 
-def main(ventana, ancho):
-    FILAS = 11
-    grid = crear_grid(FILAS, ancho)
-    inicio = None
-    fin = None
+def main(ventana, filas, columnas, ancho_ventana, alto_ventana):
+    pygame.init()
+    pygame.font.init()
+    grid = crear_ventana(filas, columnas, ancho_ventana, alto_ventana)
+    inicio, fin = None, None
     corriendo = True
+    algorithm_generator = None
+    path_gen = None
+    animating_path = False
+    last_step_time = 0
+    step_delay = 50
 
     while corriendo:
-        dibujar(ventana, grid, FILAS, ancho)
+        current_time = pygame.time.get_ticks()
+        dibujar(ventana, grid, filas, columnas, ancho_ventana, alto_ventana)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 corriendo = False
 
-            if pygame.mouse.get_pressed()[0]:  # Left click
+            if event.type == pygame.MOUSEBUTTONDOWN:
                 pos = pygame.mouse.get_pos()
-                fila, col = obtener_click_pos(pos, FILAS, ancho)
+                fila, col = obtener_click_pos(pos, filas, columnas, ancho_ventana, alto_ventana)
+                if fila < 0 or fila >= filas or col < 0 or col >= columnas:
+                    continue
                 nodo = grid[fila][col]
-                
                 if not inicio and nodo != fin:
                     inicio = nodo
                     inicio.hacer_inicio()
-
+                    initial_position["x"], initial_position["y"] = col, fila
                 elif not fin and nodo != inicio:
                     fin = nodo
                     fin.hacer_fin()
-
+                    final_position["x"], final_position["y"] = col, fila
                 elif nodo != fin and nodo != inicio:
                     nodo.hacer_pared()
 
-            elif pygame.mouse.get_pressed()[2]:  # Click derecho
+            elif pygame.mouse.get_pressed()[2]:
                 pos = pygame.mouse.get_pos()
-                fila, col = obtener_click_pos(pos, FILAS, ancho)
+                fila, col = obtener_click_pos(pos, filas, columnas, ancho_ventana, alto_ventana)
+                if fila < 0 or fila >= filas or col < 0 or col >= columnas:
+                    continue
                 nodo = grid[fila][col]
-                nodo.restablecer()     
-
+                nodo.restablecer()
                 if nodo == inicio:
                     inicio = None
                 elif nodo == fin:
                     fin = None
 
-            elif pygame.key.get_pressed()[pygame.K_SPACE]:
-                algoritmo(inicio, fin, grid, FILAS)
-                
+            # Detectar la tecla espacio para iniciar el algoritmo
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                if inicio and fin:
+                    cuadricula = get_grid_formated(grid)
+                    inicio_pos = (initial_position['y'], initial_position['x'])
+                    fin_pos = (final_position['y'], final_position['x'])
+                    algorithm_generator = precios(cuadricula, inicio_pos, fin_pos)
+
+        if algorithm_generator:
+            try:
+                event = next(algorithm_generator)
+
+                if event[0] == 'path':
+                    path = event[1]
+                    path_gen = iter(path[1:-1])
+                    animating_path = True
+                    last_step_time = current_time
+                    algorithm_generator = None
+                else:
+                    _, actual, open_list, closed_list = event
+                    for row in grid:
+                        for node in row:
+                            if node.es_inicio() or node.es_fin() or node.es_pared():
+                                continue
+                            node.color = BLANCO
+
+                    for (f, pos) in open_list:
+                        fila, col = pos
+                        node = grid[fila][col]
+                        if not node.es_inicio() and not node.es_fin() and not node.es_pared():
+                            node.color = AZUL  # Búsqueda en azul
+
+                    for pos in closed_list:
+                        fila, col = pos
+                        node = grid[fila][col]
+                        if not node.es_inicio() and not node.es_fin() and not node.es_pared():
+                            node.color = GRIS
+
+                    fila, col = actual
+                    node = grid[fila][col]
+                    if not node.es_inicio() and not node.es_fin() and not node.es_pared():
+                        node.color = ROJO  # Camino en rojo
+
+            except StopIteration:
+                algorithm_generator = None
+
+        if animating_path and current_time - last_step_time > step_delay:
+            try:
+                pos = next(path_gen)
+                fila, col = pos
+                node = grid[fila][col]
+                node.do_route()
+                last_step_time = current_time
+            except StopIteration:
+                animating_path = False
+
+        pygame.display.update()
 
     pygame.quit()
 
-
-def heuristica(nodo, fin):
-    # Obtener las posiciones del nodo actual y del nodo final
-    x1, y1 = nodo.get_pos()
-    x2, y2 = fin.get_pos()
-    distancia_x = abs(x2 - x1)
-    distancia_y = abs(y2 - y1)
-    distancia_total = distancia_x + distancia_y
-    heuristica = distancia_total * 10
-
-    return heuristica
-
-
-
-def vecinos(nodo, grid):
-    vecinos = []
-
-    direcciones = [
-        (1, 0), (-1, 0), (0, 1), (0, -1), 
-        (1, 1), (1, -1), (-1, 1), (-1, -1)
-    ]
-    
-    for direccion in direcciones:
-        nueva_fila = nodo.fila + direccion[0]
-        nueva_col = nodo.col + direccion[1]
-        
-        if 0 <= nueva_fila < nodo.total_filas and 0 <= nueva_col < nodo.total_filas:
-            vecino = grid[nueva_fila][nueva_col]
-            if not vecino.es_pared():
-                vecinos.append(vecino)
-
-    return vecinos
-
-def mostrar_ruta(current):
-    while current.father:
-        current = current.father
-        current.ruta_final()
-
-
-   
-
-def algoritmo(inicio, fin, grid, filas):
-    contador = 0
-    lista_abierta = PriorityQueue()
-    lista_abierta.put((0, contador, inicio))
-    lista_cerrada = set()
-    
-    inicio.g = 0
-    inicio.f = heuristica(inicio, fin)
-    
-    while not lista_abierta.empty():
-        current = lista_abierta.get()[2]
-        lista_cerrada.add(current)
-
-        if current == fin:
-            mostrar_ruta(fin)
-            return True
-        
-        for vecino in vecinos(current, grid):
-            if vecino in lista_cerrada:
-                continue
-
-
-               
-    
-            if (current.fila != vecino.fila):
-                peso = 14
-            else:
-                peso = 10     
-           
-            temporal_g = current.g + peso
-
-            if temporal_g < vecino.g:
-                vecino.father = current
-                vecino.g = temporal_g
-                vecino.h = heuristica(vecino, fin)
-                vecino.f = vecino.g + vecino.h
-
-                if vecino not in [i[2] for i in lista_abierta.queue]:
-                    contador += 1
-                    lista_abierta.put((vecino.f, contador, vecino))
-                    if vecino != fin:
-                        vecino.buscar()
-        
-        if current != inicio:
-            current.buscar()
-        dibujar(VENTANA, grid, filas, ANCHO_VENTANA)
-        time.sleep(0.1) 
-    return False
-
-
-main(VENTANA, ANCHO_VENTANA)
+main(VENTANA, FILAS, COLUMNAS, ANCHO_VENTANA, ALTO_VENTANA)
