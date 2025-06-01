@@ -1,0 +1,11 @@
+# Ignorar entornos virtuales y archivos binarios grandes
+venv*/
+*.pyd
+*.dll
+*.so
+*.pyc
+__pycache__/
+*.exe
+*.zip
+*.tar.gz
+*.whl
